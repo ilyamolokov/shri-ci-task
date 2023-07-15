@@ -1,8 +1,8 @@
 name: Tests
-on: [pull_request]
+on: [pull_request, push]
 
 jobs:
-  run-commitlint:
+  run-linter:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -20,8 +20,16 @@ jobs:
           npm install conventional-changelog-conventionalcommits
           npm install commitlint@latest
 
+      - name: Validate current commit with commitlint
+        if: github.event_name == 'push'
+        run: npx commitlint --from HEAD~1 --to HEAD --verbose
+
       - name: Validate PR commits with commitlint
+        if: github.event_name == 'pull_request'
         run: npx commitlint --from ${{ github.event.pull_request.head.sha }}~${{ github.event.pull_request.commits }} --to ${{ github.event.pull_request.head.sha }} --verbose
+
+      - name: Run Lint
+        run: npm run lint
 
   run-unit-test:
     runs-on: ubuntu-latest
@@ -38,9 +46,6 @@ jobs:
 
       - name: Run Unit test
         run: npm run test
-
-      - name: Run test-ci
-        run: npm run test-ci
 
   run-e2e-test:
     runs-on: ubuntu-latest
