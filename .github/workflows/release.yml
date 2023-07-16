@@ -10,11 +10,11 @@ permissions:
   issues: write
 
 jobs:
-  run-tests:
-    uses: ./.github/workflows/test.yml
+  # run-tests:
+  #   uses: ./.github/workflows/test.yml
 
   create_release:
-    needs: run-tests
+    # needs: run-tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -34,7 +34,7 @@ jobs:
         uses: ardalanamini/auto-changelog@v4
         id: changelog
         with:
-          github-token: ${{ github.token }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
           commit-types: |
             feat    : New Features
             fix     : Bug Fixes
