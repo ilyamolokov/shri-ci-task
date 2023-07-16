@@ -1,188 +1,132 @@
+name: Create Release
+
 on:
   push:
     tags:
       - 'v[0-9]+'
 
-name: Create Release
+permissions:
+  contents: read
+  issues: write
 
 jobs:
+  run-tests:
+    uses: ./.github/workflows/test.yml
+
   create_release:
-    permissions: write-all
+    needs: tests
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
 
-      - name: Checkout code
-        uses: actions/checkout@v3
-
-      - name: Get the version
-        id: get_version
-        run: echo ::set-output name=VERSION::${GITHUB_REF/refs\/tags\//}
-        # run: echo "VERSION=${{GITHUB_REF/refs\/tags\//}}" >> $GITHUB_STATE
-
-      - name: Create Release Branch
+      - name: Get information from tag
+        id: info
         run: |
-          git checkout -b release-${{ steps.get_version.outputs.VERSION }}
-          git merge ${{ github.ref_name }}
-          git checkout master
-          git merge release-${{ steps.get_version.outputs.VERSION }}
-          git push origin master
+          previousTag=$(git --no-pager tag --sort=creatordate --merged ${{ github.ref_name }} | tail -2 | head -1)
+          echo "currentTag=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          echo "previousTag=${previousTag}" >> $GITHUB_OUTPUT
+          echo "author=${{ github.actor }}" >> $GITHUB_OUTPUT
+          echo "date=$(date +'%d.%m.%Y %H:%M:%S')" >> $GITHUB_OUTPUT
 
-      # - name: Push the branch 
-      #   env:
-      #     GIT_USER_NAME: ${{ secrets.GIT_USER_NAME }}
-      #     GIT_USER_EMAIL: ${{ secrets.GIT_USER_EMAIL }}
-      #   run: |
-      #     git config user.name "${GIT_USER_NAME}"
-      #     git config user.email "${GIT_USER_EMAIL}"
-      #     git push https://ilyamolokov:${{ secrets.PERSONAL_ACCESS_TOKEN }}@github.com/ilyamolokovOrganization/ci-task.git release-${{ steps.get_version.outputs.VERSION }}
-
-      # - name: Generate changelog
-      #   uses: scottbrenner/generate-changelog-action@master
-      #   id: changelog
-      #   with:
-      #     from-tag: 'last tag'
-      #     to-tag: 'current tag'
-      #     run: |
-      #       LAST_TAG=$(git describe --tags --abbrev=0 HEAD^)
-      #       CHANGELOG=$(git log --pretty=format:"- %s" $LAST_TAG..HEAD)
-      #       echo ::set-output name=changelog::$CHANGELOG
-
-      # - name: Get previous tag
-      #   id: previous_tag
-      #   uses: actions/github-script@v4
-      #   with:
-      #     script: |
-      #       const tags = await github.repos.listTags({
-      #         owner: context.repo.owner,
-      #         repo: context.repo.repo,
-      #       });
-      #       const currentTag = tags.data.find((tag) => tag.name === context.ref.replace('refs/tags/', ''));
-      #       const previous_Tag = tags.data[tags.data.indexOf(currentTag) + 1];
-      #       return previous_Tag.name ?? tags.data[tags.data.indexOf(currentTag)];
-      - name: Get previous tag
-        id: previoustag
-        run: |
-          echo "::set-output name=tag::$(git describe --tags --abbrev=0 `git rev-list --tags --skip=1 --max-count=1`)"
-        shell: bash
-
-      - name: Print previous tag
-        run: |
-          echo "The previous tag was ${{ steps.previoustag.outputs.tag }}"
-
-      - name: Update CHANGELOG
+      - name: Changelog
+        uses: ardalanamini/auto-changelog@v4
         id: changelog
-        uses: requarks/changelog-action@v1
         with:
-          token: ${{ github.token }}
-          fromTag: ${{ github.ref_name }}
-          toTag: ${{ steps.previous_tag.outputs.result }}
-          writeToFile: false
+          github-token: ${{ github.token }}
+          commit-types: |
+            feat    : New Features
+            fix     : Bug Fixes
+            build   : Build System & Dependencies
+            perf    : Performance Improvements
+            docs    : Documentation
+            test    : Tests
+            refactor: Refactors
+            chore   : Chores
+            ci      : CI
+            style   : Code Style
+            revert  : Reverts
+          default-commit-type     : Other Changes
+          mention-authors         : true
+          mention-new-contributors: true
+          include-compare-link    : true
+          include-pr-links        : true
+          include-commit-links    : true
+          semver                  : false
+          use-github-autolink     : true
 
-      - name: Find Release Issue
-        id: find_issue
-        run: |
-          ISSUE_NUMBER=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            "https://api.github.com/repos/${{ github.repository }}/issues?labels=RELEASE" | \
-            jq -r ".[] | select(.title == \"Release ${{ steps.get_version.outputs.VERSION }}\") | .number")
-          echo ::set-output name=issue_number::$ISSUE_NUMBER
-        shell: bash
-
-      # - name: Update Release Issue
-      #   if: steps.find_issue.outputs.issue_number
-      #   uses: octokit/request-action@v2.x
-      #   with:
-      #     route: PATCH /repos/{owner}/{repo}/issues/{issue_number}
-      #     title: 'Release ${{ steps.get_version.outputs.VERSION }}'
-      #     body: | 
-      #       Author: ${{ github.actor }}
-      #       Date: ${{ github.event.commits[0].timestamp }}
-      #       Version: ${{ steps.get_version.outputs.VERSION }}
-      #       Changelog: ${{ steps.changelog.outputs.changes }}
-      #   env:
-      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Create Release
-        id: create_release
-        if: steps.find_issue.outputs.issue_number == ''
-        uses: actions/create-release@latest
+      - name: Create or update issue
+        id: issue
+        uses: JasonEtco/create-an-issue@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CHANGELOG: ${{ steps.changelog.outputs.changelog }}
+          TAG: ${{ steps.info.outputs.currentTag}}
+          AUTHOR: ${{ steps.info.outputs.author }}
+          DATE: ${{ steps.info.outputs.date }}
         with:
-          tag_name: ${{ steps.get_version.outputs.VERSION }}
-          release_name: 'Release ${{ steps.get_version.outputs.VERSION }}'
-          body: | 
-            Author: ${{ github.actor }}
-            Date: ${{ github.event.commits[0].timestamp }}
-            Version: ${{ steps.get_version.outputs.VERSION }}
-            Changelog: ${{ steps.changelog.outputs.changes }}
-          draft: false
-          prerelease: false
-          labels: RELEASE
+          filename: .github/ISSUE_TEMPLATE.md
+          update_existing: true
+          search_existing: all
+
+      - name: Comment issue with test results
+        uses: peter-evans/create-or-update-comment@v3
+        with:
+          issue-number: ${{ steps.issue.outputs.number }}
+          body: |
+            Tests results №${{ github.run_id }}
+
+            Download test results:
+            ${{github.server_url}}/${{ github.repository }}/actions/runs/${{github.run_id}}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Create release version Issue
-        uses: imjohnbo/issue-bot@3d96848fb5e9a4a473bb81ae62b4b4866a56e93a
+    outputs:
+      issueNumber: ${{ steps.issue.outputs.number }}
+  
+  build-and-deploy:
+    needs: [create_release]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
         with:
-          labels: "RELEASE, ${{ steps.get_version.outputs.VERSION }}"
-          title: 'RELEASE ${{ steps.get_version.outputs.VERSION }}'
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create release branch
+        run: |
+          git checkout -b release-${{ github.ref_name }}
+          git push -u origin release-${{ github.ref_name }}
+
+      - name: Install Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+
+      - name: Install and Build
+        run: |
+          npm ci
+          PUBLIC_URL="/unit-demo-cra" npm run build
+
+      - name: Deploy to GitHub Pages
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          folder: build
+
+      - name: Comment issue with deploy
+        uses: peter-evans/create-or-update-comment@v3
+        with:
+          issue-number: ${{ needs.create_release.outputs.issueNumber }}
           body: |
-            Author: ${{ github.actor }}
-            Date: ${{ github.event.commits[0].timestamp }}
-            Version: ${{ steps.get_version.outputs.VERSION }}
-            Changelog: ${{ steps.changelog.outputs.changes }}
-          pinned: false
-          close-previous: false
+            Deploy ${{ github.run_id }}
+            Deployment link: https://ilyamolokov.github.io/shri-ci-task
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Close Issue
-        uses: actions/stale@v8
+        uses: peter-evans/close-issue@v3
         with:
-          close-issue-message: 'This issue was closed.'
-          stale-issue-label: "wontfix"
-          days-before-stale: 0
-          days-before-close: 0
-
-  # run_tests:
-  #   needs: create_release
-  #   runs-on: ubuntu-latest
-
-  #   strategy:
-  #     matrix:
-  #       node-version: [18.x]
-
-  #   steps:
-  #     - uses: actions/checkout@v3
-  #       with:
-  #         fetch-depth: 0
-  #     - name: Run tests ${{ matrix.node-version }}
-  #       uses: actions/setup-node@v2 
-  #       with:
-  #         node-version: ${{ matrix.node-version }}
-
-  #     - name: Install commitlint
-  #       run: |
-  #         npm install conventional-changelog-conventionalcommits
-  #         npm install commitlint@latest
-
-  #     - name: Validate current commit (last commit) with commitlint
-  #       if: github.event_name == 'push'
-  #       run: npx commitlint --from HEAD~1 --to HEAD --verbose
-
-  #     - name: Install dependencies
-  #       run: npm ci
-
-  #     - name: Install playwright
-  #       run: npx playwright install --with-deps chromium
-
-  #     - name: Run Unit test
-  #       run: npm run test
-
-  #     - name: Run e2e test
-  #       run: npm run e2e
-
-  #     - name: Run test-ci
-  #       run: npm run test-ci
-
-  #     - name: Run build
-  #       run: npm run build --if-present
-
+          issue-number: ${{ needs.create_release.outputs.issueNumber }}
+          comment: |
+            Close Issue
+            Issue automatically closed
