@@ -10,11 +10,11 @@ permissions:
   issues: write
 
 jobs:
-  # run-tests:
-  #   uses: ./.github/workflows/test.yml
+  run-tests:
+    uses: ./.github/workflows/test.yml
 
   create_release:
-    # needs: run-tests
+    needs: run-tests
     runs-on: ubuntu-latest
     permissions: write-all
     steps:
