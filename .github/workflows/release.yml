@@ -123,7 +123,7 @@ jobs:
             Deploy ${{ github.run_id }}
             Deployment link: https://ilyamolokov.github.io/shri-ci-task
         env:
-          GITHUB_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Close Issue
         uses: peter-evans/close-issue@v3
