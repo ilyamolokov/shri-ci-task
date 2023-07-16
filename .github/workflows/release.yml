@@ -76,7 +76,7 @@ jobs:
         with:
           issue-number: ${{ steps.issue.outputs.number }}
           body: |
-            Tests results №${{ github.run_id }}
+            Tests results ${{ github.run_id }}
 
             Download test results:
             ${{github.server_url}}/${{ github.repository }}/actions/runs/${{github.run_id}}
