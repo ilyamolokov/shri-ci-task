@@ -108,20 +108,21 @@ jobs:
       - name: Install and Build
         run: |
           npm ci
-          PUBLIC_URL="/unit-demo-cra" npm run build
+          PUBLIC_URL="/shri-ci-task" npm run build
 
-      - name: Deploy to GitHub Pages
+      - name: Deploy
         uses: JamesIves/github-pages-deploy-action@v4
         with:
           folder: build
 
-      - name: Comment issue with deploy
+      - name: Comment Issue
         uses: peter-evans/create-or-update-comment@v3
         with:
           issue-number: ${{ needs.create_release.outputs.issueNumber }}
           body: |
             Deploy ${{ github.run_id }}
-            Deployment link: https://ilyamolokov.github.io/shri-ci-task
+
+            Deploy Link: https://ilyamolokov.github.io/shri-ci-task
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
